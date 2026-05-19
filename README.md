@@ -1,6 +1,6 @@
 # Genesys Cloud MCP Server
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server that exposes Genesys Cloud APIs as tools for AI assistants like Claude.
+A [Model Context Protocol](https://modelcontextprotocol.io) server that exposes Genesys Cloud's public REST APIs as structured, callable tools for MCP-compatible clients.
 
 ## Tools (~130 total)
 
@@ -15,7 +15,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server that exposes 
 | **Groups** | `list_groups`, `get_group`, `list_group_members` |
 | **Authorization** | `list_roles`, `get_user_roles`, `get_organization` |
 
-### AI Portfolio
+### Intelligent Engagement
 | Category | Tools |
 |---|---|
 | **Assistants & Copilot** | `list_assistants`, `get_assistant`, `get_assistant_copilot`, `get_conversation_suggestions`, `get_conversation_summary`, `get_conversation_participant_suggestion` |
@@ -24,7 +24,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server that exposes 
 | **Predictive Routing** | `list_predictors`, `get_predictor`, `get_queue_estimated_wait_time`, `get_agent_best_points` |
 | **NLU / Language Understanding** | `list_nlu_domains`, `get_nlu_domain`, `list_nlu_domain_versions`, `detect_nlu_intent`, `list_nlu_intents` |
 | **Bots** | `list_bot_connectors`, `list_bots`, `get_bot_summaries`, `list_genesys_bots` |
-| **Agent Performance AI** | `list_performance_profiles`, `get_agent_scorecard` |
+| **Performance** | `list_performance_profiles`, `get_agent_scorecard` |
 
 ### Operations
 | Category | Tools |
@@ -92,9 +92,9 @@ cp .env.example .env
 # Edit .env with your credentials
 ```
 
-### 4. Configure Claude Desktop (or another MCP host)
+### 4. Configure Your MCP Host
 
-Add to your `claude_desktop_config.json`:
+Add to your MCP host configuration (e.g. `claude_desktop_config.json`):
 
 ```json
 {
@@ -112,7 +112,7 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
-Alternatively, use `npx tsx` for development without a build step:
+For development without a build step:
 
 ```json
 {
@@ -159,29 +159,35 @@ npm run typecheck
 
 ```
 src/
-├── index.ts          # MCP server entry point, env config, tool registration
-├── auth.ts           # OAuth 2.0 client credentials + token cache
-├── client.ts         # Axios-based API client with auto-retry on 401
-├── types.ts          # Shared TypeScript types and region maps
+├── index.ts                # Server entry point, env config, tool registration
+├── auth.ts                 # OAuth 2.0 client credentials + token cache
+├── client.ts               # Axios-based API client with auto-retry on 401
+├── types.ts                # Shared TypeScript types and region maps
 └── tools/
-    ├── users.ts       # User management tools
-    ├── conversations.ts  # Conversation tools
-    ├── routing.ts     # Queue and routing tools
-    ├── analytics.ts   # Historical and real-time analytics
-    ├── presence.ts    # Presence/availability tools
-    └── groups.ts      # Groups and authorization tools
+    ├── users.ts            # User management
+    ├── conversations.ts    # Conversation management
+    ├── routing.ts          # Queues, skills, wrap-up codes
+    ├── analytics.ts        # Historical and real-time analytics
+    ├── presence.ts         # Presence and availability
+    ├── groups.ts           # Groups and authorization
+    ├── ai.ts               # Assistants, knowledge base, speech analytics, NLU, bots
+    ├── workforce.ts        # WFM: schedules, forecasts, adherence, time-off
+    ├── outbound.ts         # Campaigns, contact lists, DNC
+    ├── quality.ts          # Evaluations, calibrations, surveys
+    ├── flows.ts            # Architect flows, data tables, prompts, IVR
+    ├── recordings.ts       # Recording retrieval and retention policies
+    ├── telephony.ts        # Edges, sites, phones, trunks, DIDs
+    ├── messaging.ts        # Messaging channels and email routing
+    ├── journey.ts          # Customer journey, segments, web deployments
+    ├── external_contacts.ts # External contacts and organizations
+    ├── gamification.ts     # Performance profiles and leaderboards
+    ├── learning.ts         # Learning modules and assignments
+    ├── coaching.ts         # Coaching appointments
+    ├── audit.ts            # Audit log queries
+    ├── integrations.ts     # Integration management and action execution
+    ├── notifications.ts    # Notification channels and topic subscriptions
+    └── locations.ts        # Location management
 ```
-
-## How the Server Knows Which API to Call
-
-This server does **not** expose all of Genesys Cloud's 500+ APIs. It exposes a curated set of **named tools**, each hard-wired to a specific API endpoint. When you ask Claude a question, Claude reads every tool's name and description, reasons about which tool matches your intent, and calls it with the right parameters.
-
-For example:
-- *"Who is currently waiting in the Support queue?"* → Claude calls `query_queue_observations` with your queue ID
-- *"Show me all active voice calls"* → Claude calls `list_conversations` with `communicationType: "call"`
-- *"What's Sarah's current status?"* → Claude calls `search_users` to find Sarah, then `get_user_presence` with her ID
-
-If an API you need isn't listed in the Features table above, it isn't implemented yet — see **Adding New Tools** below.
 
 ## Adding New Tools
 
@@ -194,9 +200,9 @@ Each tool follows the pattern:
 
 ```typescript
 server.tool(
-  "tool_name",                          // unique snake_case name
-  "Description shown to the AI",        // be specific — this is how Claude picks the right tool
-  { param: z.string().describe("...") }, // typed, described parameters
+  "tool_name",
+  "Tool description",
+  { param: z.string().describe("...") },
   async ({ param }) => {
     const result = await client.get(`/some/endpoint/${param}`);
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
@@ -204,55 +210,34 @@ server.tool(
 );
 ```
 
-## Implementation Recommendations
+## Production Considerations
 
-### Prioritize for a Production-Ready Server
+**Pagination**
+Each tool returns a single page of results. For complete datasets, add a `fetchAllPages` utility in `client.ts` that iterates until `pageNumber * pageSize >= total`.
 
-**Pagination helper**
-Currently each tool returns a single page. For large datasets (users, queues, conversations), add a `fetchAllPages` utility in `client.ts` that iterates until `pageNumber * pageSize >= total`.
+**Rate Limiting**
+Genesys Cloud enforces per-minute rate limits per OAuth client. Add a token-bucket or queue in `client.ts` to prevent 429 errors under sustained load. The `bottleneck` npm package integrates cleanly with the existing Axios setup.
 
-**Rate limiting**
-Genesys Cloud enforces per-minute rate limits per OAuth client. Add a token-bucket or queue in `client.ts` to avoid 429 errors when tools are called in rapid succession. The `bottleneck` npm package is a lightweight option.
-
-**Structured error responses**
-Instead of throwing errors that crash the tool call, return them as readable MCP content so the AI can explain the problem to the user:
+**Error Handling**
+Return structured error responses rather than throwing, so downstream clients receive actionable messages:
 ```typescript
 catch (err) {
   return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
 }
 ```
 
-**Notifications / webhooks**
-Real-time use cases (agent state changes, new interactions) require Genesys Cloud Notifications via WebSocket (`/api/v2/notifications/channels`). Implement a `NotificationClient` that subscribes to topics and can push updates as MCP resources or sampling requests.
+**Real-Time Events**
+Push-based use cases (agent state changes, interaction arrivals) require Genesys Cloud Notifications via WebSocket (`/api/v2/notifications/channels`). The `notifications.ts` tools cover channel and subscription management; implement a persistent `NotificationClient` to consume the event stream.
 
 **MCP Resources**
-Beyond tools, MCP supports `resources` — named, URI-addressable data that Claude can read directly. Good candidates: the organization's queue list, presence definitions, and wrap-up codes (slow-changing reference data). Register them with `server.resource(...)` so Claude can consult them without a round-trip tool call.
+Slow-changing reference data (queues, skills, presence definitions, wrap-up codes) is well-suited to MCP `resources`, which clients can read without a live tool call. Register them with `server.resource(...)` to reduce round-trips for frequently accessed lookups.
 
-### APIs Worth Adding Next
+**Security**
+- Store credentials in a secrets manager (AWS Secrets Manager, HashiCorp Vault, Azure Key Vault) rather than `.env` files in production
+- Scope the OAuth client's roles to read-only unless write operations are explicitly required
+- Rotate client secrets on a defined schedule; the token cache in `auth.ts` handles mid-request expiry automatically
+- Emit structured logs for all tool invocations, including sanitized parameters, to support audit and compliance requirements
 
-| API Group | Why it matters |
-|---|---|
-| **Workforce Management** | Schedule adherence, time-off requests, forecasting |
-| **Outbound Campaigns** | Campaign status, contact list management, agent assignment |
-| **Quality Management** | Evaluations, calibrations, survey results |
-| **Architect Flows** | IVR flow listing, publishing, and version history |
-| **Integrations** | List/manage third-party integrations and credentials |
-| **Audit** | Track configuration changes across the org |
-| **Knowledge Base** | Search and manage KB articles for agent assist |
-| **Journey / Web Deployments** | Customer journey data, web messaging deployments |
-
-### Security
-
-- Store credentials in a secrets manager (1Password, AWS Secrets Manager) rather than `.env` files in production
-- Scope the OAuth client's roles to **read-only** unless write operations are explicitly needed
-- Rotate client secrets on a schedule; the token cache in `auth.ts` handles in-flight expiry automatically
-- Log all tool invocations (with sanitized params) to an audit trail
-
-### Performance
-
-- The analytics query tools (`query_conversation_details`, `query_queue_aggregates`) can be slow for large time ranges — add a configurable timeout and advise users to keep intervals under 24 hours per call
-- Cache slow-changing reference data (queues, skills, presence definitions, wrap-up codes) in memory with a TTL of ~5 minutes to avoid redundant API calls
-
-## License
-
-MIT
+**Performance**
+- Analytics query tools (`query_conversation_details`, `query_queue_aggregates`) can time out for intervals exceeding 24 hours — add a configurable per-tool timeout and validate interval length at the parameter level
+- Cache reference data (queues, skills, presence definitions, wrap-up codes) in memory with a short TTL (5 minutes) to reduce redundant API calls during high-frequency sessions

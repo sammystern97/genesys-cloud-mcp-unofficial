@@ -1,0 +1,39 @@
+{
+  "name": "genesys-cloud-mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol server for Genesys Cloud APIs",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "genesys-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src/**/*.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "axios": "^1.7.9",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "genesys",
+    "genesys-cloud",
+    "model-context-protocol",
+    "purecloud",
+    "contact-center"
+  ],
+  "license": "MIT"
+}
